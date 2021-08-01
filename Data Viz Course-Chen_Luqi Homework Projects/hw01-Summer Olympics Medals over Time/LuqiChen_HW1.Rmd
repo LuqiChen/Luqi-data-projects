@@ -1,0 +1,227 @@
+---
+title: "Homework 1 - Summer Olympics"
+author: "luqi Chen"
+date: "2/21/2019"
+output:
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## 1.Medal Counts over Time
+```{r}
+setwd("/Users/luqi/Desktop")
+ath = read.csv("athletes_and_events.csv")
+nocregions = read.csv("noc_regions.csv")
+gdppop = read.csv("gdp_pop.csv")
+#install.packages("tidyverse")
+```
+```{r}
+athsummer <- ath[which(ath$Season=='Summer'),]
+library(tidyr)
+tathsummer = drop_na(athsummer, Medal)
+tathsummer= tathsummer[!duplicated(tathsummer), ]
+```
+
+
+```{r}
+library(dplyr)
+#group_by(athsummer,NOC, add = FALSE)
+cleandata <- tathsummer %>%
+  group_by(NOC) %>%
+summarize(medal_number = length(Medal),gold_number = length(which(Medal=="Gold")),silver_number = length(which(Medal=="Silver")),bronze_number = length(which(Medal=="Bronze"))) %>%
+  arrange(desc(.$medal_number))
+#cleandata
+```
+```{r}
+tathsummerUSA <- ath[which(tathsummer$NOC=='USA'),]
+cleandataUSA <- tathsummerUSA %>%
+  group_by(Year,Sex) %>%
+summarize(gold_number = length(which(Medal=="Gold")),silver_number = length(which(Medal=="Silver")),bronze_number = length(which(Medal=="Bronze"))) 
+cleandataUSA
+```
+
+```{r}
+library(ggplot2)
+# ggplot(data=cleandataUSA,
+#             aes(x=Year,
+#                 y=gold_number))+
+#   geom_line(aes(group=Sex,
+#                   color=Sex))
+# look at USA's gold medal number by time trend, considering the gneder of the gold medal winners
+p = ggplot(data=cleandataUSA,
+            aes(x=Year,
+                y=gold_number))
+p + geom_line(aes(group=Sex,
+                  color=Sex))+
+         labs(x="Year",
+         y="Gold Medal Number",
+         color="Gender") +
+   ggtitle("USA's Gold Medal Number by Sex")+ geom_point(size=2,aes(color=Sex))
+
+```
+```{r}
+cleandata_add_Medal <- tathsummer %>%
+  group_by(NOC,Medal) %>%
+summarize(medal_number = length(Medal))
+#cleandata_add_Medal
+cleandata_add_Medal_top5 <- cleandata_add_Medal[which(cleandata_add_Medal$NOC == 'USA'|cleandata_add_Medal$NOC =='URS'|cleandata_add_Medal$NOC =='GBR'|cleandata_add_Medal$NOC =='GER'|cleandata_add_Medal$NOC =='FRA'),]
+cleandata_add_Medal_top5
+g = ggplot(data=cleandata_add_Medal_top5,aes(NOC,fill=Medal))
+g + geom_bar(aes(weight=medal_number),position = "dodge")+scale_fill_manual(values=c("darkred", "gold","gray40"))+ggtitle("Top 5 Medal winning NOCs")+labs(x="NOC",
+         y="Medal Number") 
+# I would recommend the first visualization because we can see some interesting pattern in the graph, as time goes by, in USA, the gap of medal numbers won by male and female is narrowing. 
+```
+##2.Medal Counts adjusted by Population, GDP
+```{r}
+tath = drop_na(ath, Medal)
+tath = tath[!duplicated(tath), ]
+gdppop=gdppop[!duplicated(gdppop), ]
+addvalue<- tath %>%
+  group_by(NOC) %>%
+summarize(medal_number = length(Medal),gold_number = length(which(Medal=="Gold")),silver_number = length(which(Medal=="Silver")),bronze_number = length(which(Medal=="Bronze")),medal_value = 3*as.numeric(gold_number) + 2*as.numeric(silver_number)+as.numeric(bronze_number)) %>%
+  arrange(desc(.$medal_number))
+#addvalue
+
+fulltable= merge(x = addvalue, y = gdppop, by.x = "NOC", by.y = "Code", all = TRUE)
+#fulltable
+fulltable$medal_value_byGDP = (as.numeric(fulltable$medal_value)/as.numeric(fulltable$GDP.per.Capita))
+fulltable$medal_value_byPOP = (as.numeric(fulltable$medal_value)/as.numeric(fulltable$Population))*1000000
+fulltable$highlight <- fulltable$NOC == 'CHN'
+fulltable <- fulltable %>% 
+  mutate(highlight=replace(highlight, highlight == "TRUE", "CHN"), highlight=replace(highlight, highlight == "FALSE", "OTHER"))
+Ranking_plot1=ggplot(fulltable, aes(x = GDP.per.Capita, y = medal_value)) + 
+  geom_point(aes(colour = highlight)) + 
+  scale_colour_manual(values = c("OTHER" = "black", "CHN" = "red"))+ 
+  labs(x="GDP.per.Capita",
+         y="Unadjusted Medal Value",
+         color="NOC") +
+   ggtitle("CHN's Ranking in Unadjusted Medal Value")
+Ranking_plot1
+Ranking_plot2=ggplot(fulltable, aes(x = GDP.per.Capita, y = medal_value_byGDP)) + 
+  geom_point(aes(colour = highlight)) + 
+  scale_colour_manual(values = c("OTHER" = "black", "CHN" = "red"))+ 
+  labs(x="GDP.per.Capita",
+         y="Medal Value Adjusted by GDP",
+         color="NOC") +
+   ggtitle("CHN's Ranking in Adjusted Medal Value(by GDP)")
+Ranking_plot2
+Ranking_plot3=ggplot(fulltable, aes(x = GDP.per.Capita, y = medal_value_byPOP)) + 
+  geom_point(aes(colour = highlight)) + 
+  scale_colour_manual(values = c("OTHER" = "black", "CHN" = "red"))+
+  labs(x="GDP.per.Capita",
+         y="Medal Value Adjusted by Population",
+         color="NOC") +
+   ggtitle("CHN's Ranking in Adjusted Medal Value(by Population)")
+Ranking_plot3
+library(ggplot2)
+library(gridExtra)
+grid.arrange(Ranking_plot1, Ranking_plot2, Ranking_plot3,nrow=3)
+## From the comparison of 3 plots we can see that CHN ranks top when medal_value is adjusted by GDP, and ranks very low when medal_value is adjusted by population, which shows that CHN has a really large population.
+```
+##3.Host Country Advantage
+```{r}
+library(rvest)
+library(stringr)
+wiki_hosts <- read_html("https://en.wikipedia.org/wiki/Summer_Olympic_Games") 
+hosts <- html_table(html_nodes(wiki_hosts, "table")[[8]], fill=TRUE)
+hosts <- hosts[-1,1:3]
+hosts$city <- str_split_fixed(hosts$Host, n=2, ",")[,1]
+hosts$country <- str_split_fixed(hosts$Host, n=2, ", ")[,2]
+tathsummer_host <- tathsummer[which(tathsummer$NOC =='FRA'|tathsummer$NOC =='USA'|tathsummer$NOC == 'GBR'|tathsummer$NOC =='SWE'|tathsummer$NOC =='BEL'|tathsummer$NOC =='NED'|tathsummer$NOC =='GER'|tathsummer$NOC =='GBR'|tathsummer$NOC =='FIN'|tathsummer$NOC =='ANZ'|tathsummer$NOC =='ITA'|tathsummer$NOC =='JPN'|tathsummer$NOC =='MEX'|tathsummer$NOC =='CAN'|tathsummer$NOC =='URS'|tathsummer$NOC =='KOR'|tathsummer$NOC =='ESP'|tathsummer$NOC =='GRE'|tathsummer$NOC =='CHN'|tathsummer$NOC =='BRA'),]
+#tathsummer_host
+tathsummer_host_addyear<- tathsummer_host %>%
+  group_by(NOC,Year) %>%
+summarize(medal_number = length(Medal))
+#tathsummer_host_addyear
+tathsummer_host_group<- tathsummer_host %>%
+  group_by(NOC) %>%
+summarize(medal_number = length(Medal))
+#tathsummer_host_group
+NOC = c("ANZ","ANZ","BEL","BEL","BRA","BRA","CAN","CAN","CHN","CHN","ESP","ESP","FIN","FIN","FRA","FRA","GBR","BGR","GER","GER","GRE","GRE","ITA","ITA","JPN","JPN","KOR","KOR","MEX","MEX","NED","NED","SWE","SWE","URS","URS","USA","USA")
+Host = c("true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false","true","false")
+Yearly_Average_MedalNumber = c(0,1.1,188,9.9,50,15.7,23,26.6,184,26.9,69,15.5,40,16.1,172.5,49.3,247,57.3,224,91.4,39.5,5.6,88,50.3,62,29.2,77,17.6,9,3.7,57,31.9,190,34,442,60,298.5,158.7)
+df = data.frame(NOC,Host,Yearly_Average_MedalNumber)
+df
+Adv_plot=ggplot(df, aes(x = NOC, y = Yearly_Average_MedalNumber )) + 
+  geom_point(aes(colour = Host)) + 
+   ggtitle("Host Country Advantage")
+Adv_plot
+```
+
+
+##4. Most successful athletes
+```{r}
+namedata <- tath %>%
+  group_by(Name,Medal,Sex) %>%
+summarize(medal_number = length(Medal),gold_number = length(which(Medal=="Gold")),silver_number = length(which(Medal=="Silver")),bronze_number = length(which(Medal=="Bronze"))) %>%
+  arrange(desc(.$medal_number))
+#namedata
+## I define "most successful athletes"as athletes who won most gold medals, let's look at top 10 gold medal winners and see the gender distribution
+namedata_top10 = namedata[1:10,]
+namedata_top10
+g2 = ggplot(data=namedata_top10,aes(Name,fill=Sex))
+g2 + geom_bar(aes(weight=gold_number),position = position_stack(reverse = TRUE))+coord_flip()+ggtitle("Top 10 Gold-Medal winning Atheletes")+labs(x="Name",
+         y="Gold Medal Number") +theme(legend.position = "top")
+namedata_addsport_year <- tath %>%
+  group_by(Name,Sport,Year) %>%
+summarize(medal_number = length(Medal),gold_number = length(which(Medal=="Gold"))) %>%
+ arrange(desc(.$gold_number))
+#namedata_addsport_year
+namedata_addsport_year_top10 <- namedata_addsport_year[which(namedata_addsport_year$Name == 'Michael Fred Phelps, II'|namedata_addsport_year$Name == 'Raymond Clarence "Ray" Ewry'|namedata_addsport_year$Name == 'Frederick Carlton "Carl" Lewis'|namedata_addsport_year$Name == 'Larysa Semenivna Latynina (Diriy-)'|namedata_addsport_year$Name == 'Mark Andrew Spitz'|namedata_addsport_year$Name == 'Paavo Johannes Nurmi'|namedata_addsport_year$Name == 'Birgit Fischer-Schmidt'|namedata_addsport_year$Name == 'Jennifer Elisabeth "Jenny" Thompson (-Cumpelik)'|namedata_addsport_year$Name == 'Matthew Nicholas "Matt" Biondi'|namedata_addsport_year$Name == 'Ole Einar Bjrndalen'),]
+p2 <- ggplot(data=namedata_addsport_year_top10,
+            aes(x=Year,
+                y=gold_number))
+p2 + geom_line(aes(group=Name,
+                  color=Sport)) +
+    labs(x="Year",
+         y="Gold Medal Number",
+         color="Sport") + geom_point(size=4,aes(color=Sport)) + ggtitle("Top 10 Gold-Medal winning Atheletes' Sports")
+## For this graph, every tiny line is an athlete, my interesting finding is that before 1925, top athletes are crazy about winning medals in Atheletics, and later on, the popular sport became swimming
+```
+##5.Make two plots interactive
+```{r}
+library(devtools)
+devtools::install_github("ropensci/plotly",force=TRUE)
+R.home(component = "home")
+#install.packages("usethis")
+library(usethis)
+usethis::edit_r_environ()
+Sys.setenv("plotly_username"="luqi.chen")
+Sys.setenv("plotly_api_key"="R9LBpABPVy7aUJ3Sx7jf")
+interation_1=p + geom_line(aes(group=Sex,
+                  color=Sex))+
+         labs(x="Year",
+         y="Gold Medal Number",
+         color="Gender") +
+   ggtitle("USA's Gold Medal Number by Sex")+ geom_point(size=2,aes(color=Sex))
+#install.packages('plotly')
+library(plotly)
+ggplotly(interation_1)
+## In this interation graph, readers can easily get the statistic of gold number and year by pointing to each spot.
+interation_2 = g + geom_bar(aes(weight=medal_number),position = "dodge")+scale_fill_manual(values=c("darkred", "gold","gray40"))+ggtitle("Top 5 Medal winning NOCs")+labs(x="NOC",
+         y="Medal Number") 
+ggplotly(interation_2)
+# In this interation graph, readers can easily read the specific number of medals by pointing to each bar.
+```
+##6.Data Table
+```{r}
+#install.packages('DT')
+library(DT)
+datatable(cleandata_add_Medal_top5)
+library(stringr)
+pretty_headers <- 
+  gsub("[.]", " ", colnames(cleandata_add_Medal_top5)) %>%
+  str_to_title()
+cleandata_add_Medal_top5 %>%
+  datatable(
+    rownames = FALSE,
+    colnames = pretty_headers,
+    filter = list(position = "top"),
+    options = list(language = list(sSearch = "Filter:"))
+  )
+## In this datatable, I can provide the medal information for a particular NOC(by using the column filter of Noc), I can also provide how gold medals are distributed in the top 5 Medal Winning NOCs(by using the column filter of Medal)
+```
+
