@@ -1,0 +1,308 @@
+---
+title: "Homework 2"
+author: "luqi Chen"
+date: "3/11/2019"
+output: 
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1.Data exploration
+
+a) Violation Code and Fine Amounts
+
+```{r}
+#setwd("/Users/luqi/Desktop")
+pdata = read.csv("data/parking/parkingNYC_Jan2019.csv")
+pvc = read.csv("data/parking/parkingNYC_ParkingViolationCodes_Nov_2018.csv")
+library(dplyr)
+data1a = left_join(pdata, pvc, by="ViolationCode")
+data1a_group1 = data1a %>%
+  group_by(VIOLATION_DESCRIPTION) %>%
+  summarise(n=n()) %>%
+  arrange(desc(.$n))
+
+data1a_group1_top10 = data1a_group1[1:10,]
+print(data1a_group1_top10)
+library(ggplot2)
+g1 = ggplot(data1a_group1_top10,aes(VIOLATION_DESCRIPTION))
+g1 + geom_bar(aes(weight=n),position = position_stack(reverse = TRUE),fill="darkred")+coord_flip()+ggtitle("Top 10 Most Common Types of Violations")+labs(x="Violation Type",
+         y="Number of Violation Occurrence") +theme(legend.position = "top")
+```
+then focus on total amount of revenue generated, here I use just the below 96ST price, column name "Fine_Amount"
+```{r}
+data1a_group2 = data1a %>%
+  group_by(VIOLATION_DESCRIPTION) %>%
+  summarise(n=n())
+data1a_addfine = left_join(data1a_group2, pvc, by="VIOLATION_DESCRIPTION")
+data1a_addfine_addrevenue = data1a_addfine %>%
+  mutate(revenue = n*Fine_Amount/1000000) %>%
+  arrange(desc(.$revenue))
+data1a_addfine_addrevenue_top10 = data1a_addfine_addrevenue[1:10,]
+data1a_addfine_addrevenue_top10
+g2 = ggplot(data1a_addfine_addrevenue_top10,aes(VIOLATION_DESCRIPTION))
+g2 + geom_bar(aes(weight=revenue),position = position_stack(reverse = TRUE),fill="gold")+coord_flip()+ggtitle("Top 10 Most Revenue Earning Violations")+labs(x="Violation Type",
+         y="Total Revenue Generated (Million Dollars)") +theme(legend.position = "top")
+```
+
+Comparison: "No standing-day/time limits"" is the most common type of violation, and also generates most revenue, but "double parking" is the fourth most common violation, while it generates second most revenue, it may because its fine price is relatively high.
+
+b) Average amount of fine by vehicle
+
+```{r}
+# average amount of fine by vehicle color
+# here I choose 9 colors to plot: black, blue, brown, gray, green, orange, red, white, yellow
+subdata1a = subset(data1a, Vehicle_Color %in% c('BL','BL/','BLACK','BLU','BLUE','BR','BRN','BRO','BROWN','BRW','GR','GR/','GRA','GRAY','GREE','GREEN','OR','ORANGE','R','RD','RD/','RED','WHI','WHITE','YE','YEL','YELLO','YL','YLLW'))
+# create a new variable to sort these colors to 10 colors
+# subdata1a$newcolor[(subdata1a$Vehicle_Color == 'BL'|subdata1a$Vehicle_Color =='BL/'|subdata1a$Vehicle_Color =='BLACK')] = "BLACK"
+subdata1a$newcolor[(subdata1a$Vehicle_Color %in% c('BL','BL/','BLACK'))] = "BLACK"
+subdata1a$newcolor[(subdata1a$Vehicle_Color %in% c('BLU','BLUE'))] = "BLUE"
+subdata1a$newcolor[(subdata1a$Vehicle_Color %in% c('BR','BRN','BRO','BROWN','BRW'))] = "BROWN"
+subdata1a$newcolor[(subdata1a$Vehicle_Color %in% c('GR','GR/','GRA','GRAY'))] = "GRAY"
+subdata1a$newcolor[(subdata1a$Vehicle_Color %in% c('GREE','GREEN'))] = "GREEN"
+subdata1a$newcolor[(subdata1a$Vehicle_Color %in% c('OR','ORANGE'))] = "ORANGE"
+subdata1a$newcolor[(subdata1a$Vehicle_Color %in% c('R','RD','RD/','RED'))] = "RED"
+subdata1a$newcolor[(subdata1a$Vehicle_Color %in% c('WHI','WHITE'))] = "WHITE"
+subdata1a$newcolor[(subdata1a$Vehicle_Color %in% c('YE','YEL','YELLO','YL','YLLW'))] = "YELLOW"
+subdata1a_new = subdata1a[which(subdata1a$ViolationCode>0 & subdata1a$ViolationCode!=95),]
+data1b_group1 = subdata1a_new %>%
+  group_by(newcolor) %>%
+  summarise(avgfine_bycolor=mean(Fine_Amount))
+data1b_group1
+g3 = ggplot(data1b_group1,aes(x=newcolor,fill= newcolor))
+g3 + geom_bar(aes(weight=avgfine_bycolor))+ggtitle("Average Amount of Fine by Vehicle Color")+labs(x="Vehicle Color",y="Average Amount of Fine") + scale_fill_manual(values=c("black", "blue", "brown","gray","green","orange","red","white","yellow"))
+
+```
+
+Finding: It seems like, brown vehicles have a higher average amount of fine
+
+```{r}
+data1a$Vehicle_Year[data1a$Vehicle_Year==0] = NA
+data1a$Vehicle_Year[data1a$Vehicle_Year>2019] = NA
+# Here I treat vehicle years which exceeds 2019 as NA, because it makes no sense for future cars to make violations.
+data1b_group2 = data1a %>%
+  group_by(Vehicle_Year) %>%
+  summarise(avgfine_byyear=mean(Fine_Amount))
+head(data1b_group2)
+g4 = ggplot(data1b_group2, aes(x = Vehicle_Year, y = avgfine_byyear ))
+g4 + geom_point(aes(colour = "Pink")) + 
+   ggtitle("Average Amount of Fine by Vehicle Year") +labs(x="Vehicle Year", y="Average Amount of Fine")
+```
+
+Finding: Vehicles that are made around 1990 have the highest average amount of fine.
+
+```{r}
+# average amount of fine by vehicle plate type
+data1a_2plates = data1a[which(data1a$Plate_Type=='COM'|data1a$Plate_Type=='PAS'),]
+data1a_2plates_new = data1a_2plates[which(data1a_2plates$ViolationCode>0 & data1a_2plates$ViolationCode!=95),]
+data1b_group3 = data1a_2plates_new %>%
+  group_by(Plate_Type) %>%
+  summarise(avgfine_byplate = mean(Fine_Amount))
+data1b_group3
+g5 = ggplot(data1b_group3,aes(Plate_Type))
+g5 + geom_bar(aes(weight=avgfine_byplate),fill="orange")+ggtitle("Average Amount of Fine by Vehicle Plate Type")+labs(x="Vehicle Plate Type",y="Average Amount of Fine") 
+```
+
+Finding: there seems not a big difference of average amount of fine between those two vehicle plate types
+
+## 2.Map by Precincts
+
+a) Number of tickets, total fines, and average fines
+
+```{r}
+library(rgdal)
+Precinctdata = readOGR("data/police_precincts/.","nypp")
+library(sp)
+precinctdata = subset(Precinctdata, Precinct == c(1,5,6,7,9,10,13,14,17,18,19,20,22,23,24,25,26,28,30,32,33,34))
+precinctdata = spTransform(precinctdata, 
+                          CRS("+proj=longlat +datum=WGS84"))
+DFprecinctdata = fortify(precinctdata)
+DFprecinctdata = DFprecinctdata %>% mutate_each(funs(as.numeric),
+                                                  vars = c("id"))
+w1 = c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21)
+w2 = c(1,5,6,7,9,10,13,14,17,18,19,20,22,23,24,25,26,28,30,32,33,34)
+for(i in w1){
+  DFprecinctdata$ViolationPrecinct[DFprecinctdata$id==i]<-w2[i+1]
+}
+
+library(dplyr)
+library(tidyverse) 
+data1a_group3 = data1a %>%
+  group_by(ViolationPrecinct) %>%
+  summarise(tickets=n(),totalfineamount = sum(Fine_Amount),avgfineamount = mean(Fine_Amount)) 
+data2a <- left_join(DFprecinctdata, data1a_group3,by="ViolationPrecinct")
+#data2a[is.na(data2a)] = 0
+(ticketmap <- ggplot(data2a, 
+    aes(x = long, y = lat, group=group)) + scale_fill_gradientn(colours=c("yellow","orange","red"))+
+    geom_polygon(aes(fill = tickets), color="white")+ggtitle("Total Amount of Tickets by Precinct"))
+ 
+
+```
+```{r}
+(ticketmap <- ggplot(data2a, 
+    aes(x = long, y = lat, group=group)) + scale_fill_gradientn(colours=c("yellow","orange","red"))+
+    geom_polygon(aes(fill = totalfineamount), color="white")+ggtitle("Total Fine Amount by Precinct"))
+```
+```{r}
+(ticketmap <- ggplot(data2a, 
+    aes(x = long, y = lat, group=group)) + scale_fill_gradientn(colours=c("yellow","orange","red"))+
+    geom_polygon(aes(fill = avgfineamount), color="white")+ggtitle("Average Fine Amount by Precinct"))
+```
+
+Findings in comparison: 
+(1) Compare NA area: When looking at total amount of tickets, there is only a precinct that is NA, which means that there is no ticket in the area, it should be the central park. When looking at total and average fine amount, 3 more areas become NA, which means that some of the tickets in these 3 areas don't have "Fine_Amount" in our data(I did not change it to 0 because if done so the result will be biased)
+(2) Compare colors: the mid-town area has most tickest and total fine amounts, while lower and upper Manhattan areas have highest average fine amount.
+
+b) Types of violations
+
+```{r}
+pdata_1 = subset(pdata, pdata$ViolationCode <= 25)
+pdata_1_group = pdata_1 %>%
+  group_by(ViolationPrecinct) %>%
+  summarise(group1tickets=n()) 
+data2b_1 <- left_join(DFprecinctdata, pdata_1_group,by="ViolationPrecinct")
+map_subgroup1<- ggplot(data2b_1, 
+    aes(x = long, y = lat, group=group)) +
+    geom_polygon(aes(fill = group1tickets), color="white")+ggtitle("Total Amount of Tickets by Precinct for Subgroup1(ViolationCode 1-25)")
+map_subgroup1
+```
+
+```{r}
+pdata_2 = subset(pdata, pdata$ViolationCode > 25 & pdata$ViolationCode<= 50)
+pdata_2_group = pdata_2 %>%
+  group_by(ViolationPrecinct) %>%
+  summarise(group2tickets=n()) 
+data2b_2 <- left_join(DFprecinctdata, pdata_2_group,by="ViolationPrecinct")
+map_subgroup2<- ggplot(data2b_2, 
+    aes(x = long, y = lat, group=group)) + scale_fill_gradient2()+
+    geom_polygon(aes(fill = group2tickets), color="white")+ggtitle("Total Amount of Tickets by Precinct for Subgroup2(ViolationCode 26-50)")
+map_subgroup2
+```
+
+```{r}
+pdata_3 = subset(pdata, pdata$ViolationCode > 50 & pdata$ViolationCode<= 75)
+pdata_3_group = pdata_3 %>%
+  group_by(ViolationPrecinct) %>%
+  summarise(group3tickets=n()) 
+data2b_3 <- left_join(DFprecinctdata, pdata_3_group,by="ViolationPrecinct")
+map_subgroup3<- ggplot(data2b_3, 
+    aes(x = long, y = lat, group=group)) + scale_fill_gradient(low = "white", high = "darkgreen")+
+    geom_polygon(aes(fill = group3tickets), color="white")+ggtitle("Total Amount of Tickets by Precinct for Subgroup3(ViolationCode 51-75)")
+map_subgroup3
+```
+
+```{r}
+pdata_4 = subset(pdata, pdata$ViolationCode > 75 & pdata$ViolationCode<= 98)
+pdata_4_group = pdata_4 %>%
+  group_by(ViolationPrecinct) %>%
+  summarise(group4tickets=n()) 
+data2b_4 <- left_join(DFprecinctdata, pdata_4_group,by="ViolationPrecinct")
+map_subgroup4<- ggplot(data2b_4, 
+    aes(x = long, y = lat, group=group)) + scale_fill_gradient(low = "white", high = "red")+
+    geom_polygon(aes(fill = group4tickets), color="white")+ggtitle("Total Amount of Tickets by Precinct for Subgroup4(ViolationCode 76-98)")
+map_subgroup4
+```
+
+## 3.Focus on the Upper East
+
+a) Ignoring fire hydrants
+
+```{r,message = FALSE, warning = FALSE}
+data3a = subset(pdata, pdata$ViolationCode == 40 & pdata$ViolationPrecinct ==19)
+sdata3a = subset(data3a, select = c("HouseNumber", "StreetName"))
+library(ggmap)
+geocode("15 STANTON ST Uppper East Manhattan", output = "latlon" , source = "google")
+sdata3a500 = sdata3a[1:500,]
+sdata3a500$address = paste(sdata3a500$HouseNumber,sdata3a500$StreetName,"Uppper East Manhattan")
+geocodes = geocode(sdata3a500$address,output="latlon",source = "google")
+sdata3a500$lon <- geocodes$lon
+sdata3a500$lat <- geocodes$lat
+```
+
+```{r}
+library(DT)
+DT1 = datatable(sdata3a500)
+DT1
+```
+
+b) Interactive Map
+
+```{r}
+#library(devtools)
+# Let's install the development version from Github. Run
+#devtools::install_github("rstudio/leaflet")
+library(leaflet)
+pdata500 = pdata[1:500,]
+sdata3a500$PlateType <- pdata500$Plate_Type
+sdata3a500$IssueDate <- pdata500$IssueDate
+sdata3a500$VehicleMake <- pdata500$VehicleMake
+
+map3b <- leaflet(sdata3a500) %>% 
+     addTiles('http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png') %>%
+     setView(-73.95885, 40.77365, zoom = 14)
+map3b %>% addCircles(col="orange")
+
+content <- paste("Plate Type:",sdata3a500$PlateType,"<br/>",
+                 "Issue Date:",sdata3a500$IssueDate,"<br/>",
+                 "Vehicle Make:",sdata3a500$VehicleMake,"<br/>")
+
+map3b_pop <- map3b %>% addCircles(color="orange", popup = content) 
+map3b_pop
+```
+
+c) Luxury cars and repeat offenders
+
+```{r}
+pdata500_group1 = pdata500 %>%
+  group_by(PlateID) %>%
+  summarise(n=n()) %>%
+  arrange(desc(.$n))
+pdata500_group1$Repeat = ifelse (pdata500_group1$n>1, "true","false")
+pdata500_group1
+sdata3a500$PlateID <- pdata500$PlateID
+data3c = left_join(sdata3a500, pdata500_group1, by="PlateID")
+data3c$luxury_car = ifelse(data3c$VehicleMake %in% c("ACU","ACUR","ACURA","AUDI","BENTL","BMW","CADI","CADIL","FERRA","HYUN","HYUND","INFI","INFIN","JAGUA","KIA","LEXUS","LINC","LINCO","MASE","PORSC","TESLA"),"true","false")
+# Icon settings
+RepeatIcons <- icons(
+  iconUrl = "./data/avatar.png",
+  iconWidth = 15, iconHeight = 15,
+  iconAnchorX = 7.5, iconAnchorY = 8.5
+  )
+library(RColorBrewer)
+pal = colorFactor("Set1", domain = data3c$luxury_car) # Grab a palette
+color_luxury = pal(data3c$luxury_car)
+content2<- paste("Luxury Car:",data3c$luxury_car,"<br/>",
+                 "Repeat Offender:",data3c$Repeat,"<br/>")
+map3c <- map3b %>% 
+addCircleMarkers(data=data3c, weight=0, 
+                   fillOpacity=0.7, 
+                   color = color_luxury,
+                   popup=content2) %>%
+addMarkers(data=subset(data3c,data3c$Repeat=="true"),
+             icon = RepeatIcons,
+             popup=content2) %>%
+addLegend(pal = pal, values = ~data3c$luxury_car, title = "Luxury Car or Not")
+map3c
+```
+In my map above, the markers' color indicates whether it is a luxury car, and the icons identify repeat offenders.
+
+d) Cluster
+
+```{r}
+map3d <- map3b %>% 
+addCircleMarkers(data=data3c, weight=0, 
+                   fillOpacity=0.7, 
+                   color = color_luxury,
+                   popup=content2,
+                   clusterOptions = markerClusterOptions()) %>%
+addMarkers(data=subset(data3c,data3c$Repeat=="true"),
+             icon = RepeatIcons,
+             popup=content2) %>%
+addLegend(pal = pal, values = ~data3c$luxury_car, title = "Luxury Car or Not")
+map3d
+```
+
